@@ -1,0 +1,12 @@
+# personal - never commit
+auth.json
+timesheet_data.py
+runs/
+*.png
+*.json.bak
+
+# environment
+.venv/
+__pycache__/
+.DS_Store
+.claude/

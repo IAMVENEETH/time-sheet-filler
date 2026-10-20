@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timesheet Filler</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #fff; --text: #1d2330; --muted: #677085; --line: #e2e5eb;
+    --accent: #3d6fd9; --accent-text: #fff; --accent-soft: #e8eefb; --ok: #1f8a4c; --ok-bg: #e6f4ec;
+    --warn: #a86400; --warn-bg: #fff6e5; --err: #c0392b; --err-bg: #fdecea; --code: #f0f2f5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171c; --panel: #1c2027; --text: #e6e9ef; --muted: #8e97a8; --line: #2c323c;
+      --accent: #6b95f0; --accent-text: #0e1420; --accent-soft: #212b3d; --ok: #4cc27f; --ok-bg: #18291f;
+      --warn: #e3a64a; --warn-bg: #2d2416; --err: #ef7266; --err-bg: #331d1b; --code: #232830;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 18px; padding: 10px 24px; flex-wrap: wrap;
+           border-bottom: 1px solid var(--line); background: var(--panel); }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  nav { display: flex; gap: 4px; }
+  nav button { border: 0; background: none; padding: 7px 12px; border-radius: 7px; color: var(--muted); font-weight: 500; }
+  nav button.active { background: var(--accent-soft); color: var(--accent); }
+  nav button:hover:not(.active) { color: var(--text); }
+  header .login { margin-left: auto; color: var(--muted); font-size: 13px; display: flex; gap: 10px; align-items: center; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 20px;
+         padding: 20px 24px; max-width: 1500px; margin: 0 auto; }
+  main.single { grid-template-columns: minmax(0, 760px); justify-content: center; }
+  @media (max-width: 960px) { main { grid-template-columns: 1fr; padding: 16px; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .panel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+              margin: 0 0 12px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .panel h2 .right { margin-left: auto; text-transform: none; letter-spacing: 0; display: flex; gap: 6px; }
+  textarea, input[type=text], input[type=password], input[type=number], input[type=date], select {
+    font: inherit; color: var(--text); background: var(--code); border: 1px solid var(--line);
+    border-radius: 7px; padding: 7px 10px; width: 100%; }
+  textarea { resize: vertical; padding: 10px 12px; }
+  textarea.mono { font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  textarea:focus, input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  #input { min-height: 520px; }
+  #notes { min-height: 300px; }
+  #rules { min-height: 230px; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--text);
+           border-radius: 7px; padding: 7px 14px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+  button.danger { background: var(--err); color: #fff; border-color: var(--err); font-weight: 600; }
+  button.small { padding: 3px 10px; font-size: 12px; }
+  button.link { border: 0; background: none; color: var(--accent); padding: 0; text-decoration: underline; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-top: 14px; }
+  .actions label, .hint { color: var(--muted); font-size: 13px; }
+  .actions label { display: flex; gap: 6px; align-items: center; }
+  .msg { border-radius: 8px; padding: 9px 12px; margin-bottom: 10px; font-size: 13px; white-space: pre-wrap; }
+  .msg.err { background: var(--err-bg); color: var(--err); }
+  .msg.warn { background: var(--warn-bg); color: var(--warn); }
+  .msg.ok { background: var(--ok-bg); color: var(--ok); }
+  .msg ul { margin: 0; padding-left: 18px; white-space: normal; }
+  .empty { color: var(--muted); padding: 30px 0; text-align: center; }
+  .day { border: 1px solid var(--line); border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+  .day-head { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--code); }
+  .day-head label { font-weight: 600; display: flex; gap: 8px; align-items: center; cursor: pointer; }
+  .day-head .total { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 13px; }
+  .total.ok { color: var(--ok); } .total.under { color: var(--warn); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  td { padding: 6px 12px; border-top: 1px solid var(--line); vertical-align: top; }
+  td.cat { white-space: nowrap; color: var(--muted); width: 1%; }
+  td.cat .from { font-size: 11px; display: block; }
+  td.hrs { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; width: 1%; }
+  td .desc { color: var(--muted); font-size: 12px; }
+  .log { background: var(--code); border-radius: 8px; padding: 10px 12px; max-height: 300px; overflow: auto;
+         font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; margin: 0; }
+  .status { font-size: 13px; font-weight: 600; }
+  .status.running { color: var(--accent); } .status.done { color: var(--ok); } .status.failed { color: var(--err); }
+  .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-top: 12px; }
+  .shots a { display: block; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; color: var(--muted);
+             text-decoration: none; font-size: 12px; }
+  .shots img { width: 100%; display: block; }
+  .shots span { display: block; padding: 4px 8px; }
+  .next { margin-top: 12px; font-size: 13px; }
+  details { margin-top: 10px; font-size: 13px; color: var(--muted); }
+  details pre { background: var(--code); padding: 10px; border-radius: 6px; overflow: auto; font-size: 12px; color: var(--text); }
+  .stack > * + * { margin-top: 20px; }
+  .field { margin-bottom: 16px; }
+  .field > label { display: block; font-weight: 600; font-size: 13px; margin-bottom: 5px; }
+  .field .hint { margin-top: 4px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > input, .row > select { flex: 1; }
+  .week { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .week input[type=date] { width: auto; }
+  .week .label { font-weight: 600; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px;
+          padding: 4px 12px; font-size: 13px; cursor: pointer; user-select: none; }
+  .chip:has(input:checked) { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .chip input { display: none; }
+  .setup { max-width: 1500px; margin: 16px auto 0; padding: 0 24px; }
+  .setup .msg { margin: 0; white-space: normal; }
+  .setup ol { margin: 4px 0 0; padding-left: 20px; }
+  .setup li.done { text-decoration: line-through; opacity: .6; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Timesheet Filler</h1>
+  <nav>
+    <button data-tab="generate" class="active">Generate</button>
+    <button data-tab="paste">Paste / edit</button>
+    <button data-tab="settings">Settings</button>
+  </nav>
+  <div class="login">
+    <span id="loginInfo">Checking login…</span>
+    <button class="small" id="loginBtn">Log in to HRStop</button>
+    <button class="small primary" id="loginDoneBtn" hidden>I've logged in</button>
+  </div>
+</header>
+
+<div class="setup" id="setup" hidden>
+  <div class="msg warn"><b>Finish setting up:</b>
+    <ol id="setupList"></ol>
+  </div>
+</div>
+
+<main id="workMain">
+  <div>
+    <!-- ------------------------------------------------ generate -->
+    <section class="panel" id="tab-generate">
+      <h2>Generate with AI</h2>
+      <div class="week">
+        <button class="small" id="prevWeek" aria-label="Previous week">←</button>
+        <span class="label" id="weekLabel"></span>
+        <button class="small" id="nextWeek" aria-label="Next week">→</button>
+        <input type="date" id="weekPick" aria-label="Pick a date in the week">
+      </div>
+      <div class="chips" id="dayChips"></div>
+      <textarea id="notes" placeholder="Rough notes about the week, in your own words. For example:
+
+Mon: added Channels + Calendar routes to nginx.prod.config, tested, raised PR
+Tue-Wed: scoped combining Automation Rules with AI Rule Builder, wrote comparison doc, design
+Thu: Assigned-to-Me bucket count mismatch; Google Places ZIP not mapping (works in Hyperion)
+Fri: fixed bucket count, added filters to global buckets, PR"></textarea>
+      <div class="actions">
+        <button class="primary" id="genBtn">Generate entries</button>
+        <span class="hint" id="genHint">Uses your rules from Settings. You can edit the result before filling.</span>
+      </div>
+      <div id="genMsg" style="margin-top:12px"></div>
+    </section>
+
+    <!-- ------------------------------------------------ paste -->
+    <section class="panel" id="tab-paste" hidden>
+      <h2>Entries
+        <span class="right">
+          <button class="small" id="templateBtn">Insert JSON template</button>
+          <button class="small" id="clearBtn">Clear</button>
+        </span>
+      </h2>
+      <textarea id="input" class="mono" spellcheck="false"
+        placeholder="Generated entries land here, or paste your own as JSON or in the text format:
+
+Monday — 21 Sep
+Internal Meeting — 45 min
+Title: Daily Standup
+Description: Discussed ongoing work.
+..."></textarea>
+      <details>
+        <summary>Accepted formats</summary>
+        <p>JSON keyed by date. Durations can be <code>"minutes": 105</code>, <code>"hours": "1:45"</code>
+        or <code>"duration": "1 hr 45 min"</code>. Description is optional (the title is used).</p>
+        <pre>{
+  "2026-09-21": [
+    { "category": "Internal Meeting", "duration": "45 min",
+      "title": "Daily Standup", "description": "..." }
+  ]
+}</pre>
+        <p>Or the plain-text weekly format with <code>Monday — 21 Sep</code> day headers,
+        <code>Category — 1 hr 45 min</code> lines, then <code>Title:</code> and <code>Description:</code>.</p>
+      </details>
+    </section>
+  </div>
+
+  <div class="stack">
+    <section class="panel">
+      <h2>Preview <span class="right" id="pickAll" hidden><button class="small" id="toggleAll">Select none</button></span></h2>
+      <div id="preview"><div class="empty">Generate or paste entries to see them here.</div></div>
+      <div class="actions">
+        <button id="dryBtn" disabled>Dry run</button>
+        <button class="primary" id="saveBtn" disabled>Save as drafts</button>
+        <label><input type="checkbox" id="headless"> Hide browser window</label>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Run <span class="status" id="status"></span>
+        <span class="right"><button class="small" id="stopBtn" hidden>Stop</button></span></h2>
+      <pre class="log" id="log">Nothing run yet.</pre>
+      <div id="next" class="next"></div>
+      <div class="shots" id="shots"></div>
+    </section>
+  </div>
+</main>
+
+<!-- ------------------------------------------------ settings -->
+<main id="settingsMain" class="single" hidden>
+  <section class="panel">
+    <h2>Settings</h2>
+
+    <div class="field">
+      <label for="sName">Your name <span class="hint">(optional)</span></label>
+      <input type="text" id="sName" autocomplete="name">
+    </div>
+
+    <div class="field">
+      <label for="sUrl">HRStop address</label>
+      <input type="text" id="sUrl" placeholder="https://yourcompany.hrstop.com">
+    </div>
+
+    <div class="field">
+      <label for="sProject">HRStop project</label>
+      <div class="row">
+        <input type="text" id="sProject" list="projectList" placeholder="e.g. DS-DTS Email Auto">
+        <datalist id="projectList"></datalist>
+        <button id="detectBtn">Load from HRStop</button>
+      </div>
+      <div class="hint" id="projectHint">The project your work is filed under. "Load from HRStop" reads your options (log in first).</div>
+    </div>
+
+    <div class="field">
+      <label for="sHours">Hours per day</label>
+      <input type="number" id="sHours" min="1" max="24" step="0.25" style="width:120px">
+      <div class="hint">The AI makes every day add up to exactly this, and the preview warns about days under it.</div>
+    </div>
+
+    <div class="field">
+      <label for="sKey">Gemini API key</label>
+      <div class="row">
+        <input type="password" id="sKey" autocomplete="off" placeholder="Paste your key">
+        <button id="testKeyBtn">Test key</button>
+      </div>
+      <div class="hint" id="keyHint">Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.
+        It's stored only on this computer.</div>
+    </div>
+
+    <div class="field">
+      <label for="sModel">Model</label>
+      <select id="sModel"></select>
+      <div class="hint">"Test key" loads the models your key can use. A Flash model is cheap and fast enough.</div>
+    </div>
+
+    <div class="field">
+      <label for="rules">How your entries should be written</label>
+      <textarea id="rules" spellcheck="true"></textarea>
+      <div class="hint">Plain English rules for the AI: daily standup, number of entries, title style, anything your team expects.
+        <button class="link" id="resetRules">Reset to default</button></div>
+    </div>
+
+    <div class="actions">
+      <button class="primary" id="saveSettings">Save settings</button>
+      <span id="settingsMsg" class="hint"></span>
+    </div>
+    <p class="hint" id="dataDir" style="margin-top:18px"></p>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const input = $("input");
+let parsed = null, selected = new Set(), confirmSave = null, lastStatus = null, settings = null;
+let target = 540;
+
+const TEMPLATE = {
+  "2026-10-05": [
+    { category: "Internal Meeting", duration: "45 min", title: "Daily Standup", description: "" },
+    { category: "Development", duration: "2 hrs", title: "", description: "" },
+    { category: "Analysis", duration: "1 hr 45 min", title: "", description: "" },
+    { category: "Testing", duration: "1 hr 30 min", title: "", description: "" },
+    { category: "Documentation", duration: "3 hrs", title: "", description: "" }
+  ]
+};
+
+const fmt = m => `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`;
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const store = {
+  get(k, d = "") { try { return localStorage.getItem("ts-" + k) ?? d; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("ts-" + k, v); } catch {} }
+};
+
+async function api(path, body) {
+  const r = await fetch(path, body === undefined ? {} : {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+  });
+  try { return await r.json(); } catch { return { ok: false, error: `Server error (${r.status})` }; }
+}
+
+// ---------------------------------------------------------------- tabs
+function showTab(name) {
+  document.querySelectorAll("nav button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  $("settingsMain").hidden = name !== "settings";
+  $("workMain").hidden = name === "settings";
+  $("tab-generate").hidden = name !== "generate";
+  $("tab-paste").hidden = name !== "paste";
+  store.set("tab", name);
+}
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+
+// ---------------------------------------------------------------- week picker
+const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+function mondayOf(d) { const x = new Date(d); x.setHours(12, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; }
+function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+
+let weekStart = (() => {
+  const saved = store.get("week");
+  if (saved) return mondayOf(new Date(saved + "T12:00"));
+  // Default: this week from Wednesday on, otherwise last week.
+  const today = new Date(); const mon = mondayOf(today);
+  return ((today.getDay() + 6) % 7) >= 2 ? mon : addDays(mon, -7);
+})();
+let dayOn = JSON.parse(store.get("days", "[true,true,true,true,true,false,false]"));
+
+function renderWeek() {
+  const end = addDays(weekStart, 6);
+  const o = { day: "numeric", month: "short" };
+  $("weekLabel").textContent = `${weekStart.toLocaleDateString(undefined, o)} – ${end.toLocaleDateString(undefined, { ...o, year: "numeric" })}`;
+  $("weekPick").value = iso(weekStart);
+  $("dayChips").innerHTML = DAY_NAMES.map((n, i) => {
+    const d = addDays(weekStart, i);
+    return `<label class="chip"><input type="checkbox" data-i="${i}" ${dayOn[i] ? "checked" : ""}>${n} ${d.getDate()}</label>`;
+  }).join("");
+  $("dayChips").querySelectorAll("input").forEach(cb => cb.onchange = () => {
+    dayOn[cb.dataset.i] = cb.checked; store.set("days", JSON.stringify(dayOn));
+  });
+  store.set("week", iso(weekStart));
+}
+$("prevWeek").onclick = () => { weekStart = addDays(weekStart, -7); renderWeek(); };
+$("nextWeek").onclick = () => { weekStart = addDays(weekStart, 7); renderWeek(); };
+$("weekPick").onchange = e => { if (e.target.value) { weekStart = mondayOf(new Date(e.target.value + "T12:00")); renderWeek(); } };
+
+// ---------------------------------------------------------------- generate
+$("notes").value = store.get("notes");
+$("notes").addEventListener("input", () => store.set("notes", $("notes").value));
+
+$("genBtn").onclick = async () => {
+  const dates = DAY_NAMES.map((_, i) => dayOn[i] ? iso(addDays(weekStart, i)) : null).filter(Boolean);
+  const btn = $("genBtn");
+  btn.disabled = true; btn.textContent = "Generating…";
+  $("genMsg").innerHTML = "";
+  const res = await api("/api/generate", { dates, notes: $("notes").value });
+  btn.disabled = false; btn.textContent = "Generate entries";
+  if (!res.ok) {
+    $("genMsg").innerHTML = `<div class="msg err">${esc(res.error)}</div>`;
+    if (/Settings/.test(res.error)) $("genMsg").innerHTML += `<button class="small" onclick="showTab('settings')">Open Settings</button>`;
+    return;
+  }
+  input.value = res.text; store.set("input", res.text);
+  await doParse();
+  $("genMsg").innerHTML = res.warnings.length
+    ? `<div class="msg warn"><ul>${res.warnings.map(w => `<li>${esc(w)}</li>`).join("")}</ul></div>`
+    : `<div class="msg ok">Done. Check the preview, edit under “Paste / edit” if needed, then Dry run.</div>`;
+};
+
+// ---------------------------------------------------------------- preview
+let parseTimer;
+input.addEventListener("input", () => {
+  store.set("input", input.value);
+  clearTimeout(parseTimer);
+  parseTimer = setTimeout(doParse, 300);
+});
+
+async function doParse() {
+  const text = input.value.trim();
+  if (!text) { parsed = null; renderPreview(); return; }
+  const res = await api("/api/parse", { text });
+  const prevDates = parsed && parsed.ok ? parsed.days.map(d => d.date) : [];
+  parsed = res;
+  if (res.ok) {
+    target = res.target;
+    const dates = res.days.map(d => d.date);
+    selected = new Set(dates.filter(d => selected.has(d) || !prevDates.includes(d)));
+  }
+  renderPreview();
+}
+
+function renderPreview() {
+  const box = $("preview");
+  resetConfirm();
+  if (!parsed) {
+    box.innerHTML = '<div class="empty">Generate or paste entries to see them here.</div>';
+  } else if (!parsed.ok) {
+    box.innerHTML = `<div class="msg err">${esc(parsed.error)}</div>`;
+  } else {
+    let html = "";
+    if (parsed.warnings.length)
+      html += `<div class="msg warn"><ul>${parsed.warnings.map(w => `<li>${esc(w)}</li>`).join("")}</ul></div>`;
+    for (const day of parsed.days) {
+      const under = day.total < target;
+      html += `<div class="day"><div class="day-head">
+        <label><input type="checkbox" data-date="${day.date}" ${selected.has(day.date) ? "checked" : ""}> ${esc(day.label)}</label>
+        <span class="total ${under ? "under" : "ok"}">${day.entries.length} entr${day.entries.length === 1 ? "y" : "ies"} · ${fmt(day.total)}</span>
+      </div><table>`;
+      for (const e of day.entries) {
+        const mapped = e.site_category !== e.category ? `<span class="from">from “${esc(e.category)}”</span>` : "";
+        html += `<tr><td class="cat">${esc(e.site_category)}${mapped}</td>
+          <td>${esc(e.title)}<div class="desc">${esc(e.description)}</div></td>
+          <td class="hrs">${fmt(e.minutes)}</td></tr>`;
+      }
+      html += "</table></div>";
+    }
+    box.innerHTML = html;
+    box.querySelectorAll("input[data-date]").forEach(cb => cb.addEventListener("change", () => {
+      cb.checked ? selected.add(cb.dataset.date) : selected.delete(cb.dataset.date);
+      updateButtons();
+    }));
+  }
+  $("pickAll").hidden = !(parsed && parsed.ok && parsed.days.length > 1);
+  updateButtons();
+}
+
+$("toggleAll").onclick = () => {
+  const all = parsed.days.map(d => d.date);
+  selected = selected.size === all.length ? new Set() : new Set(all);
+  renderPreview();
+};
+
+function updateButtons() {
+  const running = lastStatus && lastStatus.job.status === "running";
+  const ready = parsed && parsed.ok && selected.size > 0 && !running;
+  $("dryBtn").disabled = $("saveBtn").disabled = !ready;
+  $("loginBtn").disabled = running;
+  $("detectBtn").disabled = running;
+  $("toggleAll").textContent = parsed && parsed.ok && selected.size === parsed.days.length ? "Select none" : "Select all";
+}
+
+// ---------------------------------------------------------------- runs
+async function run(save) {
+  const dates = parsed.days.map(d => d.date).filter(d => selected.has(d));
+  const res = await api("/api/run", { text: input.value, dates, save, headless: $("headless").checked });
+  if (!res.ok) { $("log").textContent = res.error; return; }
+  poll();
+}
+
+$("dryBtn").onclick = () => run(false);
+$("saveBtn").onclick = () => {
+  if (!confirmSave) {
+    const n = selected.size;
+    $("saveBtn").textContent = `Confirm: save ${n} day${n > 1 ? "s" : ""} to HRStop`;
+    $("saveBtn").className = "danger";
+    confirmSave = setTimeout(resetConfirm, 5000);
+    return;
+  }
+  resetConfirm();
+  run(true);
+};
+function resetConfirm() {
+  clearTimeout(confirmSave); confirmSave = null;
+  $("saveBtn").textContent = "Save as drafts";
+  $("saveBtn").className = "primary";
+}
+
+$("stopBtn").onclick = () => api("/api/stop", {});
+$("loginBtn").onclick = async () => {
+  const res = await api("/api/login", {});
+  if (!res.ok) $("log").textContent = res.error;
+  poll();
+};
+$("loginDoneBtn").onclick = () => api("/api/login/done", {}).then(poll);
+
+$("templateBtn").onclick = () => {
+  input.value = JSON.stringify(TEMPLATE, null, 2);
+  store.set("input", input.value); doParse();
+};
+$("clearBtn").onclick = () => { input.value = ""; store.set("input", ""); doParse(); };
+
+// ---------------------------------------------------------------- settings
+function fillModels(models, current) {
+  const list = [...new Set([current, ...models].filter(Boolean))];
+  $("sModel").innerHTML = list.length
+    ? list.map(m => `<option ${m === current ? "selected" : ""}>${esc(m)}</option>`).join("")
+    : `<option value="">Test your key to load models</option>`;
+}
+
+async function loadSettings() {
+  settings = await api("/api/settings");
+  $("sName").value = settings.name || "";
+  $("sUrl").value = settings.hrstop_url || "";
+  $("sProject").value = settings.project || "";
+  $("sHours").value = settings.target_hours;
+  $("sKey").value = "";
+  $("sKey").placeholder = settings.has_key ? `Saved ${settings.key_hint || ""} — paste a new one to replace` : "Paste your key";
+  fillModels([], settings.gemini_model);
+  $("rules").value = settings.rules || settings.default_rules;
+  $("dataDir").textContent = `Your settings, HRStop login and screenshots are stored in ${settings.data_dir}`;
+}
+
+$("resetRules").onclick = () => { $("rules").value = settings.default_rules; };
+
+$("testKeyBtn").onclick = async () => {
+  const btn = $("testKeyBtn"); btn.disabled = true; btn.textContent = "Testing…";
+  const res = await api("/api/models", { key: $("sKey").value });
+  btn.disabled = false; btn.textContent = "Test key";
+  if (!res.ok) { $("keyHint").innerHTML = `<span style="color:var(--err)">${esc(res.error)}</span>`; return; }
+  const current = $("sModel").value && res.models.includes($("sModel").value) ? $("sModel").value : res.models[0];
+  fillModels(res.models, current);
+  $("keyHint").innerHTML = `<span style="color:var(--ok)">Key works. ${res.models.length} models available. Click “Save settings”.</span>`;
+};
+
+$("detectBtn").onclick = async () => {
+  const btn = $("detectBtn"); btn.disabled = true; btn.textContent = "Loading…";
+  $("projectHint").textContent = "Opening HRStop in the background (up to a minute)…";
+  // save the URL first so the lookup uses it
+  if ($("sUrl").value !== settings.hrstop_url) await api("/api/settings", { hrstop_url: $("sUrl").value });
+  const res = await api("/api/projects", {});
+  btn.disabled = false; btn.textContent = "Load from HRStop";
+  if (!res.ok) { $("projectHint").innerHTML = `<span style="color:var(--err)">${esc(res.error)}</span>`; return; }
+  $("projectList").innerHTML = res.projects.map(p => `<option value="${esc(p)}">`).join("");
+  const work = res.projects.filter(p => !/leave|holiday/i.test(p));
+  if (!$("sProject").value && work.length === 1) $("sProject").value = work[0];
+  $("projectHint").textContent = `Your projects: ${res.projects.join(", ")}. Click the box to choose.`;
+};
+
+$("saveSettings").onclick = async () => {
+  const res = await api("/api/settings", {
+    name: $("sName").value, hrstop_url: $("sUrl").value, project: $("sProject").value.trim(),
+    target_hours: $("sHours").value, gemini_api_key: $("sKey").value, gemini_model: $("sModel").value,
+    rules: $("rules").value,
+  });
+  $("settingsMsg").innerHTML = res.ok
+    ? `<span style="color:var(--ok)">Saved.</span>`
+    : `<span style="color:var(--err)">${esc(res.error)}</span>`;
+  if (res.ok) { await loadSettings(); poll(); doParse(); }
+  setTimeout(() => $("settingsMsg").textContent = "", 4000);
+};
+
+// ---------------------------------------------------------------- status
+function ago(ts) {
+  const s = Date.now() / 1000 - ts;
+  if (s < 3600) return `${Math.max(1, Math.round(s / 60))} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} days ago`;
+}
+
+function renderSetup(st) {
+  const steps = [
+    [!!st.setup.has_key, `Add your Gemini API key in <button class="link" onclick="showTab('settings')">Settings</button>`],
+    [!!st.login_saved_at, `Log in to HRStop (button at the top right)`],
+    [!!st.setup.project, `Choose your HRStop project in <button class="link" onclick="showTab('settings')">Settings</button>`],
+  ];
+  $("setup").hidden = steps.every(s => s[0]);
+  $("setupList").innerHTML = steps.map(([done, html]) => `<li class="${done ? "done" : ""}">${html}</li>`).join("");
+}
+
+let pollTimer;
+async function poll() {
+  clearTimeout(pollTimer);
+  const st = await api("/api/status");
+  lastStatus = st;
+  const j = st.job;
+  renderSetup(st);
+
+  $("loginInfo").textContent = st.login_saved_at ? `HRStop login saved ${ago(st.login_saved_at)}` : "Not logged in to HRStop";
+  const loginOpen = j.kind === "login" && j.status === "running";
+  $("loginDoneBtn").hidden = !loginOpen;
+  $("loginBtn").hidden = loginOpen;
+
+  const labels = { "dry-run": "Dry run", save: "Save", login: "Login" };
+  $("status").className = "status " + j.status;
+  $("status").textContent = j.kind ? `${labels[j.kind]} · ${j.status}` : "";
+  $("stopBtn").hidden = j.status !== "running";
+
+  if (j.kind) {
+    const log = $("log");
+    const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 30;
+    log.textContent = loginOpen && !j.log.length
+      ? "A browser window opened. Log in (including 2FA), wait for the dashboard, then click “I've logged in” at the top."
+      : j.log.join("\n") || "Starting…";
+    if (atBottom) log.scrollTop = log.scrollHeight;
+  }
+
+  let next = "";
+  if (j.session_expired)
+    next = `<div class="msg err">HRStop login expired. Click <b>Log in to HRStop</b> at the top, then run again.</div>`;
+  else if (j.status === "done" && j.kind === "dry-run")
+    next = `<div class="msg warn">Dry run finished. Nothing was saved. Check the screenshots, then click <b>Save as drafts</b>.</div>`;
+  else if (j.status === "done" && j.kind === "save")
+    next = `<div class="msg warn">Saved as drafts. Open each day in HRStop and click <b>Submit for Approval</b> yourself.</div>`;
+  else if (j.status === "done" && j.kind === "login")
+    next = `<div class="msg ok">HRStop login saved.</div>`;
+  $("next").innerHTML = next;
+
+  const t = Math.round((j.started || 0));
+  $("shots").innerHTML = (j.screenshots || []).map(s =>
+    `<a href="/shots/${s.file}?t=${t}" target="_blank"><img src="/shots/${s.file}?t=${t}" alt="${s.file}" loading="lazy"><span>${s.file}</span></a>`
+  ).join("");
+
+  updateButtons();
+  if (j.status === "running") pollTimer = setTimeout(poll, 1000);
+}
+
+// ---------------------------------------------------------------- boot
+input.value = store.get("input");
+renderWeek();
+showTab(store.get("tab", "generate"));
+loadSettings();
+doParse();
+poll();
+</script>
+</body>
+</html>

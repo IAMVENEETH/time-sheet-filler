@@ -1,0 +1,12 @@
+[project]
+name = "timesheet-filler"
+version = "0.2.0"
+description = "Generate HRStop timesheet entries from rough notes with Gemini and fill them as drafts."
+requires-python = ">=3.10"
+dependencies = [
+    "flask>=3.0",
+    "playwright>=1.45",
+]
+
+[tool.uv]
+package = false
