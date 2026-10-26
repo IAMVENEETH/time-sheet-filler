@@ -291,9 +291,12 @@ const store = {
 };
 
 async function api(path, body) {
-  const r = await fetch(path, body === undefined ? {} : {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-  });
+  let r;
+  try {
+    r = await fetch(path, body === undefined ? {} : {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+    });
+  } catch { return { ok: false, error: "Can't reach the app. Is the Timesheet Filler window still open?" }; }
   try { return await r.json(); } catch { return { ok: false, error: `Server error (${r.status})` }; }
 }
 
@@ -558,6 +561,7 @@ let pollTimer;
 async function poll() {
   clearTimeout(pollTimer);
   const st = await api("/api/status");
+  if (!st.job) { pollTimer = setTimeout(poll, 3000); return; }   // server unreachable: retry
   lastStatus = st;
   const j = st.job;
   renderSetup(st);

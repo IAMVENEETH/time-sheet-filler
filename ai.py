@@ -147,6 +147,30 @@ def _user_prompt(dates, notes):
 # --------------------------------------------------------------------------
 # checking
 # --------------------------------------------------------------------------
+def _fix_minutes(days, target_minutes):
+    """Snap minutes to 15-min steps and rebalance each day to the target in code,
+    so arithmetic slips don't cost a full re-generation round trip."""
+    if target_minutes % 15:
+        return   # can't hit a non-15 target in 15-min steps; let _check report it
+    for day in days:
+        entries = [e for e in day.get("entries") or [] if isinstance(e.get("minutes"), (int, float))]
+        if not entries:
+            continue
+        for e in entries:
+            e["minutes"] = max(15, int(round(e["minutes"] / 15)) * 15)
+        diff = target_minutes - sum(e["minutes"] for e in entries)
+        # 15 at a time: grow the shortest entry / shrink the longest, keeping durations even.
+        while diff > 0:
+            min(entries, key=lambda e: e["minutes"])["minutes"] += 15
+            diff -= 15
+        while diff < 0:
+            longest = max(entries, key=lambda e: e["minutes"])
+            if longest["minutes"] <= 15:
+                break
+            longest["minutes"] -= 15
+            diff += 15
+
+
 def _check(days, dates, target_minutes):
     """Return a list of problems with the model's answer (empty = good)."""
     problems = []
@@ -219,7 +243,13 @@ def generate(cfg, dates, notes, target_minutes):
     contents = [{"role": "user", "parts": [{"text": _user_prompt(dates, notes)}]}]
 
     for attempt in range(MAX_REPAIRS + 1):
-        raw, days = _ask(cfg.get("gemini_api_key"), model, system, contents)
+        try:
+            raw, days = _ask(cfg.get("gemini_api_key"), model, system, contents)
+        except AIError:
+            if not attempt:
+                raise
+            break   # a repair call failed (timeout/quota): keep the last answer, report its problems
+        _fix_minutes(days, target_minutes)
         problems = _check(days, dates, target_minutes)
         if not problems:
             break
@@ -231,7 +261,7 @@ def generate(cfg, dates, notes, target_minutes):
                     + "\n- ".join(problems)}]},
             ]
 
-    warnings = [f"Still wrong after {MAX_REPAIRS} fixes: {p}" for p in problems]
+    warnings = [f"Still wrong, please fix by hand: {p}" for p in problems]
 
     # Shape it like the paste box expects: {"YYYY-MM-DD": [entries]}, sorted, no empty days.
     out = {}
